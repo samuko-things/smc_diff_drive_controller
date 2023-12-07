@@ -27,6 +27,7 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 from time import sleep, time
+import numpy as np
 
 from smc_diff_drive_controller.modules.NodeParameters import NodeParameters
 from smc_diff_drive_controller.modules.smc_arduino_pyserial_comm import SMCArduinoSerialComm
@@ -230,7 +231,15 @@ class DiffDriveController(Node):
 
       self.pub_odom_msg.publish(odom_msg)
          
+    def checkErraticReadings(self):
+      x_diff = self.poseX - self.prevPoseX
+      y_diff = self.poseY - self.prevPoseY
+      dist_diff = np.hypot(x_diff, y_diff)
 
+      angle_diff = np.abs(self.poseTheta-self-self.prevPoseTheta)
+
+      if(dist_diff > 0.5) or (angle_diff > 1.5):
+        raise Exception("erratic readings")
 
     def broadcast_odom_tf(self):
       # self.newTime = time()
@@ -246,6 +255,7 @@ class DiffDriveController(Node):
         self.poseY = self.prevPoseY + ( (self.wheel_radius/2)*((self.thetaR-self.prevThetaR)+(self.thetaL-self.prevThetaL))*math.sin(self.prevPoseTheta) )
         self.poseTheta = self.prevPoseTheta + (self.wheel_radius/self.wheel_seperation)*((self.thetaR-self.prevThetaR)-(self.thetaL-self.prevThetaL))
 
+        self.checkErraticReadings()
         ###########################################################################
         t = TransformStamped()
 
@@ -277,10 +287,13 @@ class DiffDriveController(Node):
         self.prevPoseY = self.poseY
         self.prevPoseTheta = self.poseTheta
 
-        self.wL = 0.00
-        self.wR = 0.00
       except:
         pass
+
+      self.wL = 0.00
+      self.wR = 0.00
+      self.thetaL = 0.00
+      self.thetaR = 0.00
 
       # self.get_logger().info('\nposeX= %f m\nposeY= %f m\ntheta= %f rad\n' %(self.poseX, self.poseY, self.poseTheta))
       # self.prevTime = self.newTime
