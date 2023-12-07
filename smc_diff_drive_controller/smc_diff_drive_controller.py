@@ -26,7 +26,7 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-from time import sleep
+from time import sleep, time
 
 from smc_diff_drive_controller.modules.NodeParameters import NodeParameters
 from smc_diff_drive_controller.modules.smc_arduino_pyserial_comm import SMCArduinoSerialComm
@@ -132,6 +132,8 @@ class DiffDriveController(Node):
         # odometry pose calculation parameters
         self.thetaL = 0.00
         self.thetaR = 0.00
+        self.wL = 0.00
+        self.wR = 0.00
 
         self.prevThetaL = self.thetaL
         self.prevThetaR = self.thetaR
@@ -143,6 +145,9 @@ class DiffDriveController(Node):
         self.prevPoseX = 0.00
         self.prevPoseY = 0.00
         self.prevPoseTheta = 0.00
+
+        self.prevTime = time()
+        self.newTime = time()
 
 
 
@@ -168,8 +173,8 @@ class DiffDriveController(Node):
         self.tf_broadcaster = TransformBroadcaster(self)
 
         # Initialize timer to broadcast odom frame transform
-        odom_tf_period = 1.0/self.odom_tf_freq  # seconds
-        self.timer = self.create_timer(odom_tf_period, self.broadcast_odom_tf)
+        self.odom_tf_period = 1.0/self.odom_tf_freq  # seconds
+        self.timer = self.create_timer(self.odom_tf_period, self.broadcast_odom_tf)
 
         
 
@@ -197,47 +202,45 @@ class DiffDriveController(Node):
 
 
     def publish_odometry_msg(self):
-      try:
-        odom_msg = Odometry()
+      odom_msg = Odometry()
 
-        odom_msg.header.frame_id = self.odom_frame_id
-        odom_msg.child_frame_id = self.base_frame_id
+      odom_msg.header.frame_id = self.odom_frame_id
+      odom_msg.child_frame_id = self.base_frame_id
 
-        odom_msg.pose.pose.position.x = self.poseX
-        odom_msg.pose.pose.position.y = self.poseY
-        odom_msg.pose.pose.position.z = 0.0
+      odom_msg.pose.pose.position.x = self.poseX
+      odom_msg.pose.pose.position.y = self.poseY
+      odom_msg.pose.pose.position.z = 0.0
 
-        qx,qy,qz,qw = quaternion_from_euler(0.00, 0.00, self.poseTheta); # convert rpy to quaternion
-        odom_msg.pose.pose.orientation.x = qx
-        odom_msg.pose.pose.orientation.y = qy
-        odom_msg.pose.pose.orientation.z = qz
-        odom_msg.pose.pose.orientation.w = qw
+      qx,qy,qz,qw = quaternion_from_euler(0.00, 0.00, self.poseTheta); # convert rpy to quaternion
+      odom_msg.pose.pose.orientation.x = qx
+      odom_msg.pose.pose.orientation.y = qy
+      odom_msg.pose.pose.orientation.z = qz
+      odom_msg.pose.pose.orientation.w = qw
 
-        wl, wr = self.ser.getMotorsVel()
-        v = (self.wheel_radius/2.00)*(wr+wl)
-        w = (self.wheel_radius/self.wheel_seperation)*(wr-wl)
+      v = (self.wheel_radius/2.00)*(self.wL + self.wR)
+      w = (self.wheel_radius/self.wheel_seperation)*(self.wL - self.wR)
 
-        odom_msg.twist.twist.linear.x = v
-        odom_msg.twist.twist.linear.y = 0.00
-        odom_msg.twist.twist.linear.z = 0.00
+      odom_msg.twist.twist.linear.x = v
+      odom_msg.twist.twist.linear.y = 0.00
+      odom_msg.twist.twist.linear.z = 0.00
 
-        odom_msg.twist.twist.angular.x = 0.00
-        odom_msg.twist.twist.angular.y = 0.00
-        odom_msg.twist.twist.angular.z = w
+      odom_msg.twist.twist.angular.x = 0.00
+      odom_msg.twist.twist.angular.y = 0.00
+      odom_msg.twist.twist.angular.z = w
 
-        self.pub_odom_msg.publish(odom_msg)
+      self.pub_odom_msg.publish(odom_msg)
          
-      except:
-        pass
-        
 
 
     def broadcast_odom_tf(self):
-        
-        try:
-          self.thetaL, self.thetaR = self.ser.getMotorsPos()
-        except:
-          pass
+      # self.newTime = time()
+      # dt = self.newTime - self.prevTime
+      try:
+        self.thetaL, self.thetaR = self.ser.getMotorsPos()
+        self.wL, self.wR = self.ser.getMotorsVel()
+        # self.get_logger().info('\nthetaL= %f m\nthetaR= %f m\n' %(self.thetaL, self.thetaR))
+        # self.thetaL = self.thetaL+(self.wL*dt)
+        # self.thetaR = self.thetaR+(self.wR*dt)
 
         self.poseX = self.prevPoseX + ( (self.wheel_radius/2)*((self.thetaR-self.prevThetaR)+(self.thetaL-self.prevThetaL))*math.cos(self.prevPoseTheta) )
         self.poseY = self.prevPoseY + ( (self.wheel_radius/2)*((self.thetaR-self.prevThetaR)+(self.thetaL-self.prevThetaL))*math.sin(self.prevPoseTheta) )
@@ -273,6 +276,16 @@ class DiffDriveController(Node):
         self.prevPoseX = self.poseX
         self.prevPoseY = self.poseY
         self.prevPoseTheta = self.poseTheta
+
+        self.wL = 0.00
+        self.wR = 0.00
+      except:
+        pass
+
+      # self.get_logger().info('\nposeX= %f m\nposeY= %f m\ntheta= %f rad\n' %(self.poseX, self.poseY, self.poseTheta))
+      # self.prevTime = self.newTime
+
+        
 
 
 
